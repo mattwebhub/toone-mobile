@@ -121,7 +121,7 @@ enum AgentMapper {
 /// Maps between Session JSON-RPC data and Domain entities.
 enum SessionMapper {
 
-    private static let iso8601 = ISO8601DateFormatter()
+    private nonisolated(unsafe) static let iso8601 = ISO8601DateFormatter()
 
     // MARK: - Response -> Domain (Single)
 

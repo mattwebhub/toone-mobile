@@ -4,7 +4,7 @@ import Foundation
 
 /// A type-erased Codable wrapper that supports JSON-RPC params and results.
 /// Handles String, Int, Double, Bool, Array, Dictionary, and null.
-struct AnyCodable: Codable, Sendable, Equatable {
+struct AnyCodable: Codable, @unchecked Sendable, Equatable {
 
     let value: Any
 
