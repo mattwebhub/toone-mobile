@@ -9,11 +9,10 @@ actor TunnelClient {
     // MARK: - Properties
 
     private var webSocket: URLSessionWebSocketTask?
-    private let session: URLSession
+    private let tlsDelegate: TLSDelegate?
     private var pendingRequests: [String: CheckedContinuation<JSONRPCResponse, Error>] = [:]
     private var notificationHandlers: [String: @Sendable (JSONRPCNotification) -> Void] = [:]
     private var statusContinuation: AsyncStream<ConnectionStatus>.Continuation?
-    private var requestCounter: Int = 0
     private var receiveTask: Task<Void, Never>?
     private var pingTask: Task<Void, Never>?
     private var currentHost: String?
@@ -21,6 +20,8 @@ actor TunnelClient {
 
     private static let requestTimeoutSeconds: TimeInterval = 30
     private static let pingIntervalSeconds: TimeInterval = 15
+    private static let maxPendingRequests = 100
+    private static let maxPayloadSize = 10_485_760 // 10 MB
 
     // MARK: - Status Stream
 
@@ -36,14 +37,18 @@ actor TunnelClient {
 
     // MARK: - Init
 
-    init(session: URLSession = .shared) {
-        self.session = session
+    init(tlsDelegate: TLSDelegate? = nil) {
+        self.tlsDelegate = tlsDelegate
     }
 
     // MARK: - Connection
 
     /// Connect to the toone-desktop WebSocket server.
-    func connect(host: String, port: Int) async throws {
+    /// - Parameters:
+    ///   - host: The desktop hostname or IP.
+    ///   - port: The desktop port.
+    ///   - useTLS: Whether to use `wss://` (default) or `ws://` for local development.
+    func connect(host: String, port: Int, useTLS: Bool = true) async throws {
         guard currentStatus == .disconnected || isReconnecting else {
             return
         }
@@ -52,12 +57,19 @@ actor TunnelClient {
         currentPort = port
         updateStatus(.connecting(host: host, port: port))
 
-        guard let url = URL(string: "ws://\(host):\(port)/tunnel") else {
-            throw TunnelError.connectionFailed("Invalid URL: ws://\(host):\(port)/tunnel")
+        let scheme = useTLS ? "wss" : "ws"
+        guard let url = URL(string: "\(scheme)://\(host):\(port)/tunnel") else {
+            throw TunnelError.connectionFailed("Invalid URL: \(scheme)://\(host):\(port)/tunnel")
         }
 
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
+
+        let session = URLSession(
+            configuration: .default,
+            delegate: tlsDelegate,
+            delegateQueue: nil
+        )
 
         let task = session.webSocketTask(with: request)
         task.resume()
@@ -89,6 +101,10 @@ actor TunnelClient {
     func send(method: TunnelMethod, params: (any Encodable)? = nil) async throws -> JSONRPCResponse {
         guard let webSocket else {
             throw TunnelError.notConnected
+        }
+
+        guard pendingRequests.count < TunnelClient.maxPendingRequests else {
+            throw TunnelError.rateLimitExceeded
         }
 
         let requestId = nextRequestId()
@@ -139,8 +155,10 @@ actor TunnelClient {
                 let message = try await webSocket.receive()
                 switch message {
                 case .data(let data):
+                    guard data.count <= TunnelClient.maxPayloadSize else { continue }
                     handleMessage(data)
                 case .string(let text):
+                    guard text.utf8.count <= TunnelClient.maxPayloadSize else { continue }
                     if let data = text.data(using: .utf8) {
                         handleMessage(data)
                     }
@@ -220,8 +238,7 @@ actor TunnelClient {
     // MARK: - Helpers
 
     private func nextRequestId() -> String {
-        requestCounter += 1
-        return "req_\(requestCounter)"
+        UUID().uuidString
     }
 
     private func timeoutRequest(id: String) {

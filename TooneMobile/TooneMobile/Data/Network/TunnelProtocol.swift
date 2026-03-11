@@ -99,4 +99,6 @@ enum TunnelError: Error, Sendable {
     case rpcError(code: Int, message: String)
     case encodingFailed
     case decodingFailed(String)
+    case rateLimitExceeded
+    case payloadTooLarge
 }
