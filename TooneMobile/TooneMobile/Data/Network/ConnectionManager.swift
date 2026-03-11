@@ -9,6 +9,7 @@ actor ConnectionManager {
     // MARK: - Properties
 
     private let tunnelClient: TunnelClient
+    private let securityManager: SecurityManager?
     private var authToken: String?
     private var reconnectTask: Task<Void, Never>?
     private var monitorTask: Task<Void, Never>?
@@ -21,8 +22,9 @@ actor ConnectionManager {
 
     // MARK: - Init
 
-    init(tunnelClient: TunnelClient) {
+    init(tunnelClient: TunnelClient, securityManager: SecurityManager? = nil) {
         self.tunnelClient = tunnelClient
+        self.securityManager = securityManager
     }
 
     // MARK: - Connection
@@ -76,11 +78,30 @@ actor ConnectionManager {
             throw TunnelError.invalidResponse
         }
 
-        return DesktopInfo(
+        let roleString = result["role"]?.stringValue ?? "viewer"
+        let role = ConnectionRole(rawValue: roleString) ?? .viewer
+
+        let info = DesktopInfo(
             hostname: host,
             version: result["version"]?.stringValue ?? "unknown",
-            workspaceName: result["workspaceName"]?.stringValue ?? result["projectName"]?.stringValue
+            workspaceName: result["workspaceName"]?.stringValue ?? result["projectName"]?.stringValue,
+            role: role
         )
+
+        // Store paired device info if security manager is available
+        if let securityManager, let port = currentPort {
+            let device = PairedDevice(
+                host: host,
+                port: port,
+                certificateFingerprint: result["certificateFingerprint"]?.stringValue ?? "",
+                role: role,
+                pairedAt: Date(),
+                lastConnectedAt: Date()
+            )
+            await securityManager.storePairedDevice(device)
+        }
+
+        return info
     }
 
     // MARK: - Initial Sync

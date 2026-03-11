@@ -19,11 +19,13 @@ public struct DesktopInfo: Sendable, Equatable {
     public let hostname: String
     public let version: String
     public let workspaceName: String?
+    public let role: ConnectionRole
 
-    public init(hostname: String, version: String, workspaceName: String?) {
+    public init(hostname: String, version: String, workspaceName: String?, role: ConnectionRole = .viewer) {
         self.hostname = hostname
         self.version = version
         self.workspaceName = workspaceName
+        self.role = role
     }
 }
 
