@@ -11,6 +11,7 @@ final class RemoteMessageRepository: MessageRepository, @unchecked Sendable {
 
     private let tunnelClient: TunnelClient
     private let logger: AppLogger
+    private let analytics: AnalyticsService?
     private let cacheLimit: Int
     private let modelContainer: ModelContainer?
     private let desktopHost: String
@@ -22,10 +23,12 @@ final class RemoteMessageRepository: MessageRepository, @unchecked Sendable {
         logger: AppLogger,
         cacheLimit: Int,
         modelContainer: ModelContainer? = nil,
-        desktopHost: String = ""
+        desktopHost: String = "",
+        analytics: AnalyticsService? = nil
     ) {
         self.tunnelClient = tunnelClient
         self.logger = logger
+        self.analytics = analytics
         self.cacheLimit = cacheLimit
         self.modelContainer = modelContainer
         self.desktopHost = desktopHost
@@ -34,6 +37,8 @@ final class RemoteMessageRepository: MessageRepository, @unchecked Sendable {
     // MARK: - Send Message
 
     func sendMessage(content: String, agentId: String, sessionId: String?) async throws -> Message {
+        let sendStart = ContinuousClock.now
+
         let params: [String: AnyCodable] = [
             "content": AnyCodable(string: content),
             "agentId": AnyCodable(string: agentId),
@@ -48,6 +53,11 @@ final class RemoteMessageRepository: MessageRepository, @unchecked Sendable {
 
         let message = MessageMapper.mapFromResponse(response)
         logger.debug("Message sent: \(message.id)", category: .tunnel)
+
+        let elapsed = sendStart.duration(to: ContinuousClock.now)
+        let seconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
+        analytics?.trackMessageRoundTrip(duration: seconds)
+        analytics?.trackMessageSent(agentId: agentId)
 
         await cacheMessage(message)
         return message
@@ -120,6 +130,7 @@ final class RemoteMessageRepository: MessageRepository, @unchecked Sendable {
         let cached = MessageMapper.toCached(message, desktopHost: desktopHost)
         context.insert(cached)
         try? context.save()
+        analytics?.trackCacheWrite(type: "message")
     }
 
     @MainActor
@@ -135,9 +146,18 @@ final class RemoteMessageRepository: MessageRepository, @unchecked Sendable {
         )
 
         guard let cachedMessages = try? context.fetch(descriptor) else {
+            analytics?.trackCacheMiss(type: "message")
             return []
         }
 
-        return cachedMessages.compactMap { MessageMapper.fromCached($0) }
+        let messages = cachedMessages.compactMap { MessageMapper.fromCached($0) }
+
+        if !messages.isEmpty {
+            analytics?.trackCacheHit(type: "message", count: messages.count)
+        } else {
+            analytics?.trackCacheMiss(type: "message")
+        }
+
+        return messages
     }
 }
