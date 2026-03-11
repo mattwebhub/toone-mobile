@@ -50,7 +50,7 @@ final class AppContainer {
     init() {
         // -- Infrastructure --
         logger = AppLogger()
-        analytics = AnalyticsService(isEnabled: false)
+        analytics = AnalyticsService(isEnabled: true)
         configuration = AppConfiguration()
 
         do {
@@ -65,6 +65,7 @@ final class AppContainer {
 
         // -- Network --
         tunnelClient = TunnelClient(tlsDelegate: tlsDelegate)
+        // analytics: analytics — wire after ConnectionManager accepts it
         connectionManager = ConnectionManager(tunnelClient: tunnelClient, securityManager: securityManager)
 
         // -- Repositories --

@@ -12,12 +12,14 @@ final class AppLogger: Sendable {
     private let networkLog: Logger
     private let tunnelLog: Logger
     private let uiLog: Logger
+    private let performanceLog: Logger
 
     init() {
         generalLog = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.toone.mobile", category: "general")
         networkLog = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.toone.mobile", category: "network")
         tunnelLog = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.toone.mobile", category: "tunnel")
         uiLog = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.toone.mobile", category: "ui")
+        performanceLog = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.toone.mobile", category: "Performance")
     }
 
     // MARK: - Public API
@@ -45,6 +47,7 @@ final class AppLogger: Sendable {
         case network
         case tunnel
         case ui
+        case performance
     }
 
     // MARK: - Private
@@ -59,6 +62,8 @@ final class AppLogger: Sendable {
             return tunnelLog
         case .ui:
             return uiLog
+        case .performance:
+            return performanceLog
         }
     }
 }
