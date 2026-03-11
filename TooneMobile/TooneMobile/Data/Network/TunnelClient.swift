@@ -10,6 +10,7 @@ actor TunnelClient {
 
     private var webSocket: URLSessionWebSocketTask?
     private let tlsDelegate: TLSDelegate?
+    private let analytics: AnalyticsService?
     private var pendingRequests: [String: CheckedContinuation<JSONRPCResponse, Error>] = [:]
     private var notificationHandlers: [String: @Sendable (JSONRPCNotification) -> Void] = [:]
     private var statusContinuation: AsyncStream<ConnectionStatus>.Continuation?
@@ -37,8 +38,9 @@ actor TunnelClient {
 
     // MARK: - Init
 
-    init(tlsDelegate: TLSDelegate? = nil) {
+    init(tlsDelegate: TLSDelegate? = nil, analytics: AnalyticsService? = nil) {
         self.tlsDelegate = tlsDelegate
+        self.analytics = analytics
     }
 
     // MARK: - Connection
@@ -104,9 +106,11 @@ actor TunnelClient {
         }
 
         guard pendingRequests.count < TunnelClient.maxPendingRequests else {
+            analytics?.trackError(category: "tunnel", error: "rate_limit_exceeded")
             throw TunnelError.rateLimitExceeded
         }
 
+        let rpcStart = ContinuousClock.now
         let requestId = nextRequestId()
         let rpcParams: AnyCodable? = try params.map { try AnyCodable.from($0) }
 
@@ -116,7 +120,7 @@ actor TunnelClient {
         let message = URLSessionWebSocketTask.Message.data(data)
         try await webSocket.send(message)
 
-        return try await withCheckedThrowingContinuation { continuation in
+        let response = try await withCheckedThrowingContinuation { continuation in
             pendingRequests[requestId] = continuation
 
             Task { [weak self] in
@@ -124,6 +128,15 @@ actor TunnelClient {
                 await self?.timeoutRequest(id: requestId)
             }
         }
+
+        let elapsed = rpcStart.duration(to: ContinuousClock.now)
+        let seconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
+        analytics?.track(event: "rpc.complete", properties: [
+            "method": method.rawValue,
+            "duration_ms": String(format: "%.1f", seconds * 1000)
+        ])
+
+        return response
     }
 
     // MARK: - Notifications
@@ -155,10 +168,16 @@ actor TunnelClient {
                 let message = try await webSocket.receive()
                 switch message {
                 case .data(let data):
-                    guard data.count <= TunnelClient.maxPayloadSize else { continue }
+                    guard data.count <= TunnelClient.maxPayloadSize else {
+                        analytics?.trackError(category: "tunnel", error: "payload_too_large")
+                        continue
+                    }
                     handleMessage(data)
                 case .string(let text):
-                    guard text.utf8.count <= TunnelClient.maxPayloadSize else { continue }
+                    guard text.utf8.count <= TunnelClient.maxPayloadSize else {
+                        analytics?.trackError(category: "tunnel", error: "payload_too_large")
+                        continue
+                    }
                     if let data = text.data(using: .utf8) {
                         handleMessage(data)
                     }
