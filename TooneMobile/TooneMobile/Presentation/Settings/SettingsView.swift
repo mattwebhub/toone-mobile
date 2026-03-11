@@ -36,6 +36,7 @@ struct SettingsView: View {
                 }
 
                 cacheSection(viewModel: viewModel)
+                appearanceSection
                 aboutSection(viewModel: viewModel)
             }
             .padding(DesignTokens.Spacing.md)
@@ -156,6 +157,38 @@ struct SettingsView: View {
                 SecondaryButton("Clear Cache", icon: "trash") {
                     Task { await viewModel.clearCache() }
                 }
+            }
+            .padding(DesignTokens.Spacing.md)
+        }
+    }
+
+    // MARK: - Appearance Section
+
+    private var appearanceSection: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.md) {
+                sectionHeader("Appearance", icon: "paintbrush")
+
+                NavigationLink {
+                    AppIconPickerView()
+                } label: {
+                    HStack(spacing: DesignTokens.Spacing.sm) {
+                        Image(systemName: "app.badge")
+                            .font(.system(size: DesignTokens.IconSize.small))
+                            .foregroundStyle(OceanDepth.textSecondary)
+
+                        Text("App Icon")
+                            .font(AppTypography.UI.body)
+                            .foregroundStyle(OceanDepth.textPrimary)
+
+                        Spacer()
+
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: AppTypography.Size.xxs))
+                            .foregroundStyle(OceanDepth.textTertiary)
+                    }
+                }
+                .buttonStyle(.plain)
             }
             .padding(DesignTokens.Spacing.md)
         }
