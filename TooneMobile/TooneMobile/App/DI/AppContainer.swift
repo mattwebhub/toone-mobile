@@ -64,9 +64,8 @@ final class AppContainer {
         tlsDelegate = TLSDelegate(expectedFingerprint: nil) // Set during pairing
 
         // -- Network --
-        tunnelClient = TunnelClient(tlsDelegate: tlsDelegate)
-        // analytics: analytics — wire after ConnectionManager accepts it
-        connectionManager = ConnectionManager(tunnelClient: tunnelClient, securityManager: securityManager)
+        tunnelClient = TunnelClient(tlsDelegate: tlsDelegate, analytics: analytics)
+        connectionManager = ConnectionManager(tunnelClient: tunnelClient, securityManager: securityManager, analytics: analytics)
 
         // -- Repositories --
         // TODO: desktopHost is set after connection via updateDesktopHost()
@@ -80,7 +79,8 @@ final class AppContainer {
             tunnelClient: tunnelClient,
             logger: logger,
             cacheLimit: configuration.messagesCacheLimit,
-            modelContainer: modelContainer
+            modelContainer: modelContainer,
+            analytics: analytics
         )
 
         agentRepository = RemoteAgentRepository(
@@ -91,7 +91,8 @@ final class AppContainer {
         sessionRepository = RemoteSessionRepository(
             tunnelClient: tunnelClient,
             logger: logger,
-            modelContainer: modelContainer
+            modelContainer: modelContainer,
+            analytics: analytics
         )
 
         projectRepository = RemoteProjectRepository(
