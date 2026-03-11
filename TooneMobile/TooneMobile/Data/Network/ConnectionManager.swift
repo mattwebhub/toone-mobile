@@ -10,6 +10,7 @@ actor ConnectionManager {
 
     private let tunnelClient: TunnelClient
     private let securityManager: SecurityManager?
+    private let analytics: AnalyticsService?
     private var authToken: String?
     private var reconnectTask: Task<Void, Never>?
     private var monitorTask: Task<Void, Never>?
@@ -22,9 +23,10 @@ actor ConnectionManager {
 
     // MARK: - Init
 
-    init(tunnelClient: TunnelClient, securityManager: SecurityManager? = nil) {
+    init(tunnelClient: TunnelClient, securityManager: SecurityManager? = nil, analytics: AnalyticsService? = nil) {
         self.tunnelClient = tunnelClient
         self.securityManager = securityManager
+        self.analytics = analytics
     }
 
     // MARK: - Connection
@@ -37,11 +39,23 @@ actor ConnectionManager {
         currentPort = port
         authToken = token
 
-        try await tunnelClient.connect(host: host, port: port)
-        let info = try await handshake(host: host, token: token)
+        analytics?.trackConnectionAttempt(host: host, port: port)
+        let connectStart = ContinuousClock.now
 
-        startConnectionMonitor()
-        return info
+        do {
+            try await tunnelClient.connect(host: host, port: port)
+            let info = try await handshake(host: host, token: token)
+
+            let elapsed = connectStart.duration(to: ContinuousClock.now)
+            let seconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
+            analytics?.trackConnectionSuccess(host: host, duration: seconds)
+
+            startConnectionMonitor()
+            return info
+        } catch {
+            analytics?.trackConnectionFailure(host: host, error: error.localizedDescription)
+            throw error
+        }
     }
 
     /// Disconnect from the desktop and stop reconnection attempts.
@@ -57,6 +71,8 @@ actor ConnectionManager {
 
     /// Perform the initial authentication handshake with the desktop.
     func handshake(host: String, token: String?) async throws -> DesktopInfo {
+        let handshakeStart = ContinuousClock.now
+
         var params: [String: AnyCodable] = [
             "clientType": "mobile-ios",
             "protocolVersion": "1.0"
@@ -80,6 +96,10 @@ actor ConnectionManager {
 
         let roleString = result["role"]?.stringValue ?? "viewer"
         let role = ConnectionRole(rawValue: roleString) ?? .viewer
+
+        let elapsed = handshakeStart.duration(to: ContinuousClock.now)
+        let seconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
+        analytics?.trackHandshakeComplete(duration: seconds, role: role.rawValue)
 
         let info = DesktopInfo(
             hostname: host,
@@ -152,6 +172,7 @@ actor ConnectionManager {
 
         reconnectTask = Task { [weak self] in
             guard let self else { return }
+            let reconnectStart = ContinuousClock.now
 
             for attempt in 1...ConnectionManager.maxReconnectAttempts {
                 guard !Task.isCancelled else { return }
@@ -160,6 +181,8 @@ actor ConnectionManager {
                     ConnectionManager.baseReconnectDelay * pow(2.0, Double(attempt - 1)),
                     ConnectionManager.maxReconnectDelay
                 )
+
+                await self.analytics?.trackReconnectionAttempt(attempt: attempt, delay: delay)
 
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
                 guard !Task.isCancelled else { return }
@@ -172,6 +195,10 @@ actor ConnectionManager {
                 do {
                     try await self.tunnelClient.connect(host: host, port: port)
                     _ = try await self.handshake(host: host, token: await self.authToken)
+
+                    let elapsed = reconnectStart.duration(to: ContinuousClock.now)
+                    let totalSeconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
+                    await self.analytics?.trackReconnectionSuccess(attempt: attempt, totalDuration: totalSeconds)
                     return
                 } catch {
                     continue
