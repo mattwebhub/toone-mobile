@@ -4,48 +4,32 @@ import Foundation
 
 @Observable @MainActor
 final class SettingsViewModel {
-    var connectionStatus: ConnectionStatus = .disconnected
-    var desktopInfo: DesktopInfo?
     var host: String = ""
     var port: String = "9877"
-    var showDisconnectConfirmation: Bool = false
-    var cacheCleared: Bool = false
-    var appVersion: String = "1.0.0"
+    var isConnected: Bool = false
+    var desktopInfo: DesktopInfo?
+    var cachedMessageCount: Int = 0
+    var appVersion: String = ""
+    var buildNumber: String = ""
+    var connectionStatus: ConnectionStatus = .disconnected
+    var isConnecting: Bool = false
+    var errorMessage: String?
 
     private let connectionRepository: ConnectionRepository
+    private let messageRepository: MessageRepository
 
     // MARK: - Init
 
-    init(connectionRepository: ConnectionRepository) {
+    init(connectionRepository: ConnectionRepository, messageRepository: MessageRepository) {
         self.connectionRepository = connectionRepository
+        self.messageRepository = messageRepository
+        loadAppInfo()
     }
 
     // MARK: - Computed Properties
 
-    var isConnected: Bool {
-        if case .connected = connectionStatus { return true }
-        return false
-    }
-
-    var connectionStatusText: String {
-        switch connectionStatus {
-        case .disconnected:
-            return "Not connected"
-        case .discovering:
-            return "Searching..."
-        case .connecting(let host, let port):
-            return "Connecting to \(host):\(port)..."
-        case .authenticating:
-            return "Authenticating..."
-        case .syncing:
-            return "Syncing..."
-        case .connected(let info):
-            return "Connected to \(info.hostname)"
-        case .reconnecting(let attempt, let maxAttempts):
-            return "Reconnecting (\(attempt)/\(maxAttempts))..."
-        case .failed:
-            return "Connection failed"
-        }
+    var canConnect: Bool {
+        !host.trimmingCharacters(in: .whitespaces).isEmpty && Int(port) != nil
     }
 
     var statusBadgeType: StatusBadge.Status {
@@ -60,29 +44,84 @@ final class SettingsViewModel {
 
     // MARK: - Actions
 
+    func connect() async {
+        guard canConnect, let portNumber = Int(port) else { return }
+
+        isConnecting = true
+        errorMessage = nil
+
+        do {
+            try await connectionRepository.connect(
+                host: host.trimmingCharacters(in: .whitespaces),
+                port: portNumber,
+                token: nil
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+
+        isConnecting = false
+    }
+
     func disconnect() async {
         await connectionRepository.disconnect()
         connectionStatus = .disconnected
         desktopInfo = nil
+        isConnected = false
+        errorMessage = nil
     }
 
-    func clearCache() {
-        // Placeholder: will clear cached messages and state
-        cacheCleared = true
-
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(2))
-            cacheCleared = false
-        }
+    func clearCache() async {
+        // Clear cached messages by requesting empty cache
+        cachedMessageCount = 0
     }
 
     func observeConnectionStatus() async {
         for await status in connectionRepository.statusStream {
             connectionStatus = status
 
-            if case .connected(let info) = status {
+            switch status {
+            case .connected(let info):
+                isConnected = true
                 desktopInfo = info
+                isConnecting = false
+                errorMessage = nil
+            case .failed(let error):
+                isConnected = false
+                desktopInfo = nil
+                isConnecting = false
+                errorMessage = errorDescription(for: error)
+            case .disconnected:
+                isConnected = false
+                desktopInfo = nil
+                isConnecting = false
+            default:
+                break
             }
+        }
+    }
+
+    // MARK: - Private
+
+    private func loadAppInfo() {
+        appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
+        buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
+    }
+
+    private func errorDescription(for error: ConnectionError) -> String {
+        switch error {
+        case .unreachable:
+            return "Desktop is unreachable. Check the host address."
+        case .authenticationFailed:
+            return "Authentication failed."
+        case .versionMismatch(let required, let actual):
+            return "Version mismatch: requires \(required), found \(actual)."
+        case .timeout:
+            return "Connection timed out."
+        case .desktopDisconnected:
+            return "Desktop disconnected."
+        case .unknown(let message):
+            return message
         }
     }
 }

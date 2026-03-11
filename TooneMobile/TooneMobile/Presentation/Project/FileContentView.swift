@@ -3,100 +3,134 @@ import SwiftUI
 // MARK: - File Content View
 
 struct FileContentView: View {
-    let file: ProjectFile
-    let content: String?
+    let fileName: String
+    let content: String
     let isLoading: Bool
+    let onClose: () -> Void
 
-    @State private var isCopied = false
+    @State private var showLineNumbers: Bool = true
 
     var body: some View {
-        ZStack {
-            OceanDepth.darkBase.ignoresSafeArea()
+        NavigationStack {
+            ZStack {
+                OceanDepth.darkBase.ignoresSafeArea()
 
-            if isLoading {
-                ProgressView()
-                    .tint(OceanDepth.textSecondary)
-            } else if let content {
-                codeViewer(content: content)
-            } else {
-                emptyContent
-            }
-        }
-        .navigationTitle(file.name)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(OceanDepth.darkBase, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                copyButton
-            }
-        }
-    }
-
-    // MARK: - Code Viewer
-
-    private func codeViewer(content: String) -> some View {
-        ScrollView([.horizontal, .vertical]) {
-            VStack(alignment: .leading, spacing: 0) {
-                let lines = content.components(separatedBy: "\n")
-                ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
-                    HStack(alignment: .top, spacing: 0) {
-                        // Line number
-                        Text("\(index + 1)")
-                            .font(.system(size: AppTypography.Size.xs, design: .monospaced))
-                            .foregroundStyle(OceanDepth.textTertiary)
-                            .frame(width: lineNumberWidth(totalLines: lines.count), alignment: .trailing)
-                            .padding(.trailing, DesignTokens.Spacing.sm)
-
-                        // Separator
-                        Rectangle()
-                            .fill(OceanDepth.separator.opacity(0.3))
-                            .frame(width: 0.5)
-                            .padding(.trailing, DesignTokens.Spacing.sm)
-
-                        // Line content
-                        Text(line)
-                            .font(.system(size: AppTypography.Size.xs, design: .monospaced))
-                            .foregroundStyle(OceanDepth.textPrimary)
-                            .textSelection(.enabled)
-                    }
-                    .frame(height: 18)
+                if isLoading {
+                    loadingState
+                } else {
+                    fileContent
                 }
             }
-            .padding(DesignTokens.Spacing.sm)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(OceanDepth.darkBase, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    HStack(spacing: DesignTokens.Spacing.sm) {
+                        Image(systemName: fileIcon)
+                            .font(.system(size: DesignTokens.IconSize.small))
+                            .foregroundStyle(fileIconColor)
+
+                        Text(fileName)
+                            .font(AppTypography.Panel.title)
+                            .foregroundStyle(OceanDepth.textPrimary)
+                            .lineLimit(1)
+                    }
+                }
+
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        onClose()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: DesignTokens.IconSize.medium))
+                            .foregroundStyle(OceanDepth.textSecondary)
+                    }
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button {
+                            showLineNumbers.toggle()
+                        } label: {
+                            Label(
+                                showLineNumbers ? "Hide Line Numbers" : "Show Line Numbers",
+                                systemImage: showLineNumbers ? "list.number" : "list.bullet"
+                            )
+                        }
+
+                        Button {
+                            UIPasteboard.general.string = content
+                        } label: {
+                            Label("Copy All", systemImage: "doc.on.doc")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .font(.system(size: DesignTokens.IconSize.medium))
+                            .foregroundStyle(OceanDepth.textSecondary)
+                    }
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    // MARK: - File Content
+
+    private var fileContent: some View {
+        ScrollView([.horizontal, .vertical]) {
+            HStack(alignment: .top, spacing: 0) {
+                // Line numbers
+                if showLineNumbers {
+                    lineNumbersColumn
+                }
+
+                // Code content
+                Text(content)
+                    .font(.system(size: AppTypography.Size.xs, design: .monospaced))
+                    .foregroundStyle(OceanDepth.textPrimary)
+                    .textSelection(.enabled)
+                    .padding(DesignTokens.Spacing.sm)
+            }
         }
         .background(OceanDepth.codeBackground)
     }
 
-    // MARK: - Copy Button
+    // MARK: - Line Numbers
 
-    private var copyButton: some View {
-        Button {
-            if let content {
-                UIPasteboard.general.string = content
-                isCopied = true
+    private var lineNumbersColumn: some View {
+        let lines = content.components(separatedBy: "\n")
 
-                Task { @MainActor in
-                    try? await Task.sleep(for: .seconds(2))
-                    isCopied = false
-                }
+        return VStack(alignment: .trailing, spacing: 0) {
+            ForEach(Array(lines.enumerated()), id: \.offset) { index, _ in
+                Text("\(index + 1)")
+                    .font(.system(size: AppTypography.Size.xs, design: .monospaced))
+                    .foregroundStyle(OceanDepth.textTertiary)
+                    .frame(height: lineHeight)
             }
-        } label: {
-            Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
-                .foregroundStyle(isCopied ? OceanDepth.success : OceanDepth.textSecondary)
         }
+        .padding(.horizontal, DesignTokens.Spacing.sm)
+        .padding(.vertical, DesignTokens.Spacing.sm)
+        .background(OceanDepth.subtleSurface.opacity(0.5))
+        .overlay(
+            Rectangle()
+                .fill(OceanDepth.separator.opacity(0.3))
+                .frame(width: 0.5),
+            alignment: .trailing
+        )
     }
 
-    // MARK: - Empty Content
+    // MARK: - States
 
-    private var emptyContent: some View {
+    private var loadingState: some View {
         VStack(spacing: DesignTokens.Spacing.md) {
-            Image(systemName: "doc")
-                .font(.system(size: DesignTokens.IconSize.hero))
-                .foregroundStyle(OceanDepth.textTertiary)
+            ProgressView()
+                .progressViewStyle(.circular)
+                .tint(OceanDepth.textSecondary)
+                .scaleEffect(1.2)
 
-            Text("No content to display")
+            Text("Loading file...")
                 .font(AppTypography.UI.body)
                 .foregroundStyle(OceanDepth.textSecondary)
         }
@@ -104,8 +138,62 @@ struct FileContentView: View {
 
     // MARK: - Helpers
 
-    private func lineNumberWidth(totalLines: Int) -> CGFloat {
-        let digits = max(String(totalLines).count, 2)
-        return CGFloat(digits) * 8 + 4
+    private var lineHeight: CGFloat {
+        AppTypography.Size.xs * 1.5
     }
+
+    private var fileIcon: String {
+        let ext = (fileName as NSString).pathExtension.lowercased()
+        switch ext {
+        case "swift", "kt", "java", "py", "js", "ts", "rb", "go", "rs":
+            return "doc.text"
+        case "json", "yaml", "yml", "xml", "plist":
+            return "doc.badge.gearshape"
+        case "md", "txt":
+            return "doc.plaintext"
+        default:
+            return "doc"
+        }
+    }
+
+    private var fileIconColor: Color {
+        let ext = (fileName as NSString).pathExtension.lowercased()
+        switch ext {
+        case "swift":
+            return .orange
+        case "js", "ts":
+            return .yellow
+        case "py":
+            return .blue
+        case "json", "yaml", "yml":
+            return .purple
+        default:
+            return OceanDepth.textSecondary
+        }
+    }
+}
+
+// MARK: - Preview
+
+#Preview {
+    FileContentView(
+        fileName: "ContentView.swift",
+        content: """
+        import SwiftUI
+
+        struct ContentView: View {
+            var body: some View {
+                VStack {
+                    Image(systemName: "globe")
+                        .imageScale(.large)
+                        .foregroundStyle(.tint)
+                    Text("Hello, world!")
+                }
+                .padding()
+            }
+        }
+        """,
+        isLoading: false,
+        onClose: {}
+    )
 }

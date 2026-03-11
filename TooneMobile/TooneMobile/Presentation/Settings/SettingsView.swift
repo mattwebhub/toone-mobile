@@ -13,11 +13,11 @@ struct SettingsView: View {
                 if let viewModel {
                     settingsContent(viewModel: viewModel)
                 } else {
-                    disconnectedPlaceholder
+                    placeholderContent
                 }
             }
             .navigationTitle("Settings")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(OceanDepth.darkBase, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
@@ -30,27 +30,17 @@ struct SettingsView: View {
         ScrollView {
             VStack(spacing: DesignTokens.Spacing.lg) {
                 connectionSection(viewModel: viewModel)
-                desktopInfoSection(viewModel: viewModel)
+
+                if viewModel.isConnected {
+                    desktopInfoSection(viewModel: viewModel)
+                }
+
                 cacheSection(viewModel: viewModel)
                 aboutSection(viewModel: viewModel)
             }
             .padding(DesignTokens.Spacing.md)
         }
         .task { await viewModel.observeConnectionStatus() }
-        .alert(
-            "Disconnect",
-            isPresented: Binding(
-                get: { viewModel.showDisconnectConfirmation },
-                set: { viewModel.showDisconnectConfirmation = $0 }
-            )
-        ) {
-            Button("Cancel", role: .cancel) {}
-            Button("Disconnect", role: .destructive) {
-                Task { await viewModel.disconnect() }
-            }
-        } message: {
-            Text("Are you sure you want to disconnect from the desktop?")
-        }
     }
 
     // MARK: - Connection Section
@@ -60,44 +50,71 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: DesignTokens.Spacing.md) {
                 sectionHeader("Connection", icon: "link")
 
-                HStack {
-                    Text("Status")
-                        .font(AppTypography.UI.body)
-                        .foregroundStyle(OceanDepth.textSecondary)
-
-                    Spacer()
-
-                    StatusBadge(viewModel.statusBadgeType)
-                }
-
-                HStack {
+                // Host field
+                VStack(alignment: .leading, spacing: DesignTokens.Spacing.xs) {
                     Text("Host")
-                        .font(AppTypography.UI.body)
-                        .foregroundStyle(OceanDepth.textSecondary)
+                        .typography(.uiCaption)
 
-                    Spacer()
-
-                    Text(viewModel.host.isEmpty ? "Not set" : viewModel.host)
-                        .font(AppTypography.UI.body)
-                        .foregroundStyle(OceanDepth.textPrimary)
+                    TextField("192.168.1.100 or hostname", text: Binding(
+                        get: { viewModel.host },
+                        set: { viewModel.host = $0 }
+                    ))
+                    .font(AppTypography.UI.body)
+                    .foregroundStyle(OceanDepth.textPrimary)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.URL)
+                    .disabled(viewModel.isConnected)
+                    .padding(DesignTokens.Spacing.sm + 2)
+                    .background(OceanDepth.subtleSurface)
+                    .clipShape(RoundedRectangle(cornerRadius: DesignTokens.CornerRadius.small))
                 }
 
-                HStack {
+                // Port field
+                VStack(alignment: .leading, spacing: DesignTokens.Spacing.xs) {
                     Text("Port")
-                        .font(AppTypography.UI.body)
-                        .foregroundStyle(OceanDepth.textSecondary)
+                        .typography(.uiCaption)
 
-                    Spacer()
-
-                    Text(viewModel.port)
-                        .font(AppTypography.UI.body)
-                        .foregroundStyle(OceanDepth.textPrimary)
+                    TextField("9877", text: Binding(
+                        get: { viewModel.port },
+                        set: { viewModel.port = $0 }
+                    ))
+                    .font(AppTypography.UI.body)
+                    .foregroundStyle(OceanDepth.textPrimary)
+                    .keyboardType(.numberPad)
+                    .disabled(viewModel.isConnected)
+                    .padding(DesignTokens.Spacing.sm + 2)
+                    .background(OceanDepth.subtleSurface)
+                    .clipShape(RoundedRectangle(cornerRadius: DesignTokens.CornerRadius.small))
                 }
 
+                // Status
+                HStack {
+                    StatusBadge(viewModel.statusBadgeType)
+                    Spacer()
+                }
+
+                // Error message
+                if let errorMessage = viewModel.errorMessage {
+                    Text(errorMessage)
+                        .font(AppTypography.UI.caption)
+                        .foregroundStyle(OceanDepth.error)
+                }
+
+                // Connect / Disconnect button
                 if viewModel.isConnected {
                     SecondaryButton("Disconnect", icon: "bolt.slash", isDestructive: true) {
-                        viewModel.showDisconnectConfirmation = true
+                        Task { await viewModel.disconnect() }
                     }
+                } else {
+                    PrimaryButton(
+                        "Connect",
+                        icon: "link",
+                        isLoading: viewModel.isConnecting
+                    ) {
+                        Task { await viewModel.connect() }
+                    }
+                    .disabled(!viewModel.canConnect)
                 }
             }
             .padding(DesignTokens.Spacing.md)
@@ -106,22 +123,21 @@ struct SettingsView: View {
 
     // MARK: - Desktop Info Section
 
-    @ViewBuilder
     private func desktopInfoSection(viewModel: SettingsViewModel) -> some View {
-        if let info = viewModel.desktopInfo {
-            GlassCard {
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.md) {
-                    sectionHeader("Desktop", icon: "desktopcomputer")
+        GlassCard {
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.md) {
+                sectionHeader("Desktop Info", icon: "desktopcomputer")
 
-                    infoRow("Hostname", value: info.hostname)
-                    infoRow("Version", value: info.version)
+                if let info = viewModel.desktopInfo {
+                    infoRow(label: "Hostname", value: info.hostname)
+                    infoRow(label: "Version", value: info.version)
 
                     if let workspace = info.workspaceName {
-                        infoRow("Workspace", value: workspace)
+                        infoRow(label: "Workspace", value: workspace)
                     }
                 }
-                .padding(DesignTokens.Spacing.md)
             }
+            .padding(DesignTokens.Spacing.md)
         }
     }
 
@@ -132,15 +148,13 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: DesignTokens.Spacing.md) {
                 sectionHeader("Cache", icon: "internaldrive")
 
-                Text("Clear cached messages and session data stored on this device.")
-                    .font(AppTypography.UI.caption)
-                    .foregroundStyle(OceanDepth.textSecondary)
+                infoRow(
+                    label: "Cached Messages",
+                    value: "\(viewModel.cachedMessageCount)"
+                )
 
-                SecondaryButton(
-                    viewModel.cacheCleared ? "Cache Cleared" : "Clear Cache",
-                    icon: viewModel.cacheCleared ? "checkmark" : "trash"
-                ) {
-                    viewModel.clearCache()
+                SecondaryButton("Clear Cache", icon: "trash") {
+                    Task { await viewModel.clearCache() }
                 }
             }
             .padding(DesignTokens.Spacing.md)
@@ -154,51 +168,29 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: DesignTokens.Spacing.md) {
                 sectionHeader("About", icon: "info.circle")
 
-                infoRow("App Version", value: viewModel.appVersion)
-                infoRow("Platform", value: "iOS")
+                infoRow(label: "App Version", value: viewModel.appVersion)
+                infoRow(label: "Build", value: viewModel.buildNumber)
 
-                Text("Toone Mobile is a companion app for Toone Desktop. It connects to your desktop instance via a secure tunnel to provide mobile access to your AI agents.")
-                    .font(AppTypography.UI.caption)
-                    .foregroundStyle(OceanDepth.textTertiary)
-            }
-            .padding(DesignTokens.Spacing.md)
-        }
-    }
+                Divider()
+                    .background(OceanDepth.separator)
 
-    // MARK: - Disconnected Placeholder
-
-    private var disconnectedPlaceholder: some View {
-        ScrollView {
-            VStack(spacing: DesignTokens.Spacing.lg) {
-                GlassCard {
-                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.md) {
-                        sectionHeader("Connection", icon: "link")
-
-                        HStack {
-                            Text("Status")
-                                .font(AppTypography.UI.body)
-                                .foregroundStyle(OceanDepth.textSecondary)
-                            Spacer()
-                            StatusBadge(.disconnected)
-                        }
-                    }
-                    .padding(DesignTokens.Spacing.md)
+                linkRow(label: "Privacy Policy", icon: "hand.raised") {
+                    // Open privacy policy URL
                 }
 
-                GlassCard {
-                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.md) {
-                        sectionHeader("About", icon: "info.circle")
-                        infoRow("App Version", value: "1.0.0")
-                        infoRow("Platform", value: "iOS")
-                    }
-                    .padding(DesignTokens.Spacing.md)
+                linkRow(label: "Terms of Service", icon: "doc.text") {
+                    // Open terms URL
+                }
+
+                linkRow(label: "Support", icon: "questionmark.circle") {
+                    // Open support URL
                 }
             }
             .padding(DesignTokens.Spacing.md)
         }
     }
 
-    // MARK: - Helpers
+    // MARK: - Reusable Components
 
     private func sectionHeader(_ title: String, icon: String) -> some View {
         HStack(spacing: DesignTokens.Spacing.sm) {
@@ -207,12 +199,12 @@ struct SettingsView: View {
                 .foregroundStyle(Color.accentColor)
 
             Text(title)
-                .font(AppTypography.Panel.title)
+                .font(AppTypography.UI.headline)
                 .foregroundStyle(OceanDepth.textPrimary)
         }
     }
 
-    private func infoRow(_ label: String, value: String) -> some View {
+    private func infoRow(label: String, value: String) -> some View {
         HStack {
             Text(label)
                 .font(AppTypography.UI.body)
@@ -223,6 +215,53 @@ struct SettingsView: View {
             Text(value)
                 .font(AppTypography.UI.body)
                 .foregroundStyle(OceanDepth.textPrimary)
+        }
+    }
+
+    private func linkRow(label: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: DesignTokens.Spacing.sm) {
+                Image(systemName: icon)
+                    .font(.system(size: DesignTokens.IconSize.small))
+                    .foregroundStyle(OceanDepth.textSecondary)
+
+                Text(label)
+                    .font(AppTypography.UI.body)
+                    .foregroundStyle(OceanDepth.textPrimary)
+
+                Spacer()
+
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: AppTypography.Size.xxs))
+                    .foregroundStyle(OceanDepth.textTertiary)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Placeholder
+
+    private var placeholderContent: some View {
+        ScrollView {
+            VStack(spacing: DesignTokens.Spacing.lg) {
+                // Minimal about section when no viewModel
+                GlassCard {
+                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.md) {
+                        sectionHeader("About", icon: "info.circle")
+
+                        infoRow(
+                            label: "App Version",
+                            value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
+                        )
+                        infoRow(
+                            label: "Build",
+                            value: Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
+                        )
+                    }
+                    .padding(DesignTokens.Spacing.md)
+                }
+            }
+            .padding(DesignTokens.Spacing.md)
         }
     }
 }

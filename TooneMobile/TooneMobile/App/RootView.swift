@@ -6,12 +6,19 @@ struct RootView: View {
 
     var body: some View {
         Group {
-            if connectionVM.isConnected {
-                MainTabView()
+            if isConnected {
+                MainTabView(router: router)
             } else {
-                ConnectionView()
+                ConnectionView(viewModel: connectionVM)
             }
         }
-        .animation(.easeInOut, value: connectionVM.isConnected)
+        .animation(.easeInOut, value: isConnected)
+    }
+
+    private var isConnected: Bool {
+        if case .connected = connectionVM.connectionStatus {
+            return true
+        }
+        return false
     }
 }

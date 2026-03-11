@@ -28,15 +28,18 @@ actor ConnectionManager {
     // MARK: - Connection
 
     /// Connect to the desktop, perform handshake, and start monitoring.
-    func connect(host: String, port: Int, token: String?) async throws {
+    /// Returns the DesktopInfo from the handshake for the caller to use.
+    @discardableResult
+    func connect(host: String, port: Int, token: String?) async throws -> DesktopInfo {
         currentHost = host
         currentPort = port
         authToken = token
 
         try await tunnelClient.connect(host: host, port: port)
-        _ = try await handshake(host: host, token: token)
+        let info = try await handshake(host: host, token: token)
 
         startConnectionMonitor()
+        return info
     }
 
     /// Disconnect from the desktop and stop reconnection attempts.

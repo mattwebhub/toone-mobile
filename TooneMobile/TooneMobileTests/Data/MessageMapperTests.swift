@@ -3,310 +3,541 @@ import XCTest
 
 final class MessageMapperTests: XCTestCase {
 
-    // MARK: - Response Mapping
+    // MARK: - DTO -> Domain
 
-    func testMapFromResponse_withCompleteData_mapsAllFields() {
-        let response = JSONRPCResponse(
-            jsonrpc: "2.0",
-            result: AnyCodable(dictionary: [
-                "id": AnyCodable(string: "msg-123"),
-                "role": AnyCodable(string: "assistant"),
-                "content": AnyCodable(string: "Hello from the assistant"),
-                "sessionId": AnyCodable(string: "session-abc")
-            ]),
-            error: nil,
-            id: "req_1"
+    func test_toDomain_withCompleteDTO_mapsAllFields() {
+        // Arrange
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let dto = MessageDTO(
+            id: "msg-123",
+            role: "assistant",
+            timestamp: timestamp,
+            content: [.text(TextContentDTO(text: "Hello"))],
+            status: "completed",
+            sessionId: "session-abc",
+            isAudioMessage: false
         )
 
-        let message = MessageMapper.mapFromResponse(response)
+        // Act
+        let message = MessageMapper.toDomain(dto)
 
+        // Assert
         XCTAssertEqual(message.id, "msg-123")
         XCTAssertEqual(message.role, .assistant)
         XCTAssertEqual(message.status, .completed)
         XCTAssertEqual(message.sessionId, "session-abc")
-
-        // Content should contain a text block
+        XCTAssertFalse(message.isAudioMessage)
         XCTAssertEqual(message.content.count, 1)
         if case .text(let textContent) = message.content.first {
-            XCTAssertEqual(textContent.text, "Hello from the assistant")
+            XCTAssertEqual(textContent.text, "Hello")
         } else {
             XCTFail("Expected text content")
         }
     }
 
-    func testMapFromResponse_withMissingId_generatesUUID() {
-        let response = JSONRPCResponse(
-            jsonrpc: "2.0",
-            result: AnyCodable(dictionary: [
-                "role": AnyCodable(string: "user"),
-                "content": AnyCodable(string: "Test")
-            ]),
-            error: nil,
-            id: "req_2"
+    func test_toDomain_withUserRole_mapsRoleCorrectly() {
+        // Arrange
+        let dto = MessageDTO(
+            id: "msg-u1",
+            role: "user",
+            timestamp: ISO8601DateFormatter().string(from: Date()),
+            content: [.text(TextContentDTO(text: "User message"))],
+            status: "completed",
+            sessionId: nil,
+            isAudioMessage: nil
         )
 
-        let message = MessageMapper.mapFromResponse(response)
+        // Act
+        let message = MessageMapper.toDomain(dto)
 
-        XCTAssertFalse(message.id.isEmpty, "Should generate a non-empty ID")
-    }
-
-    func testMapFromResponse_withUserRole_mapsRoleCorrectly() {
-        let response = JSONRPCResponse(
-            jsonrpc: "2.0",
-            result: AnyCodable(dictionary: [
-                "id": AnyCodable(string: "msg-u1"),
-                "role": AnyCodable(string: "user"),
-                "content": AnyCodable(string: "User message")
-            ]),
-            error: nil,
-            id: "req_3"
-        )
-
-        let message = MessageMapper.mapFromResponse(response)
-
+        // Assert
         XCTAssertEqual(message.role, .user)
     }
 
-    func testMapFromResponse_withUnknownRole_defaultsToAssistant() {
-        let response = JSONRPCResponse(
-            jsonrpc: "2.0",
-            result: AnyCodable(dictionary: [
-                "id": AnyCodable(string: "msg-x1"),
-                "role": AnyCodable(string: "unknown_role"),
-                "content": AnyCodable(string: "Fallback")
-            ]),
-            error: nil,
-            id: "req_4"
+    func test_toDomain_withUnknownRole_defaultsToAssistant() {
+        // Arrange
+        let dto = MessageDTO(
+            id: "msg-x1",
+            role: "unknown_role",
+            timestamp: ISO8601DateFormatter().string(from: Date()),
+            content: [.text(TextContentDTO(text: "Fallback"))],
+            status: "completed",
+            sessionId: nil,
+            isAudioMessage: nil
         )
 
-        let message = MessageMapper.mapFromResponse(response)
+        // Act
+        let message = MessageMapper.toDomain(dto)
 
+        // Assert
         XCTAssertEqual(message.role, .assistant)
     }
 
-    func testMapFromResponse_withNilResult_returnsDefaultMessage() {
-        let response = JSONRPCResponse(
-            jsonrpc: "2.0",
-            result: nil,
-            error: nil,
-            id: "req_5"
+    func test_toDomain_withNilSessionId_mapsToNilSession() {
+        // Arrange
+        let dto = MessageDTO(
+            id: "msg-ns",
+            role: "assistant",
+            timestamp: ISO8601DateFormatter().string(from: Date()),
+            content: [.text(TextContentDTO(text: "No session"))],
+            status: "completed",
+            sessionId: nil,
+            isAudioMessage: nil
         )
 
-        let message = MessageMapper.mapFromResponse(response)
+        // Act
+        let message = MessageMapper.toDomain(dto)
 
-        XCTAssertFalse(message.id.isEmpty)
-        XCTAssertEqual(message.role, .assistant)
-        XCTAssertEqual(message.status, .completed)
-    }
-
-    func testMapFromResponse_withMissingSessionId_mapsToNilSession() {
-        let response = JSONRPCResponse(
-            jsonrpc: "2.0",
-            result: AnyCodable(dictionary: [
-                "id": AnyCodable(string: "msg-ns"),
-                "content": AnyCodable(string: "No session")
-            ]),
-            error: nil,
-            id: "req_6"
-        )
-
-        let message = MessageMapper.mapFromResponse(response)
-
+        // Assert
         XCTAssertNil(message.sessionId)
     }
 
-    // MARK: - Notification Mapping
-
-    func testMapFromNotification_withCompleteData_mapsAllFields() {
-        let notification = JSONRPCNotification(
-            jsonrpc: "2.0",
-            method: "chat.messageStream",
-            params: AnyCodable(dictionary: [
-                "id": AnyCodable(string: "msg-n1"),
-                "role": AnyCodable(string: "assistant"),
-                "content": AnyCodable(string: "Streaming response..."),
-                "status": AnyCodable(string: "streaming"),
-                "sessionId": AnyCodable(string: "session-n1")
-            ])
+    func test_toDomain_withNilIsAudioMessage_defaultsToFalse() {
+        // Arrange
+        let dto = MessageDTO(
+            id: "msg-a1",
+            role: "user",
+            timestamp: ISO8601DateFormatter().string(from: Date()),
+            content: [.text(TextContentDTO(text: "Test"))],
+            status: "completed",
+            sessionId: nil,
+            isAudioMessage: nil
         )
 
-        let message = MessageMapper.mapFromNotification(notification)
+        // Act
+        let message = MessageMapper.toDomain(dto)
 
+        // Assert
+        XCTAssertFalse(message.isAudioMessage)
+    }
+
+    func test_toDomain_withStreamingStatus_mapsStatusCorrectly() {
+        // Arrange
+        let dto = MessageDTO(
+            id: "msg-s1",
+            role: "assistant",
+            timestamp: ISO8601DateFormatter().string(from: Date()),
+            content: [.text(TextContentDTO(text: "Streaming..."))],
+            status: "streaming",
+            sessionId: "s1",
+            isAudioMessage: false
+        )
+
+        // Act
+        let message = MessageMapper.toDomain(dto)
+
+        // Assert
+        XCTAssertEqual(message.status, .streaming)
+    }
+
+    // MARK: - Handle All MessageContent Types
+
+    func test_toDomain_textContent_mapsCorrectly() {
+        // Arrange
+        let contentDTO = MessageContentDTO.text(TextContentDTO(text: "Hello world"))
+
+        // Act
+        let content = MessageMapper.toDomain(contentDTO)
+
+        // Assert
+        if case .text(let textContent) = content {
+            XCTAssertEqual(textContent.text, "Hello world")
+        } else {
+            XCTFail("Expected text content")
+        }
+    }
+
+    func test_toDomain_codeBlockContent_mapsCorrectly() {
+        // Arrange
+        let contentDTO = MessageContentDTO.codeBlock(
+            CodeBlockContentDTO(id: "cb-1", language: "swift", code: "print(\"hello\")")
+        )
+
+        // Act
+        let content = MessageMapper.toDomain(contentDTO)
+
+        // Assert
+        if case .codeBlock(let codeBlock) = content {
+            XCTAssertEqual(codeBlock.id, "cb-1")
+            XCTAssertEqual(codeBlock.language, "swift")
+            XCTAssertEqual(codeBlock.code, "print(\"hello\")")
+        } else {
+            XCTFail("Expected codeBlock content")
+        }
+    }
+
+    func test_toDomain_codeBlockContent_withNilLanguage_mapsCorrectly() {
+        // Arrange
+        let contentDTO = MessageContentDTO.codeBlock(
+            CodeBlockContentDTO(id: "cb-2", language: nil, code: "some code")
+        )
+
+        // Act
+        let content = MessageMapper.toDomain(contentDTO)
+
+        // Assert
+        if case .codeBlock(let codeBlock) = content {
+            XCTAssertNil(codeBlock.language)
+        } else {
+            XCTFail("Expected codeBlock content")
+        }
+    }
+
+    func test_toDomain_toolCallContent_mapsCorrectly() {
+        // Arrange
+        let contentDTO = MessageContentDTO.toolCall(
+            ToolCallContentDTO(id: "tc-1", name: "readFile", status: "executing", input: "{\"path\":\"/src\"}")
+        )
+
+        // Act
+        let content = MessageMapper.toDomain(contentDTO)
+
+        // Assert
+        if case .toolCall(let toolCall) = content {
+            XCTAssertEqual(toolCall.id, "tc-1")
+            XCTAssertEqual(toolCall.name, "readFile")
+            XCTAssertEqual(toolCall.status, .executing)
+            XCTAssertEqual(toolCall.input, "{\"path\":\"/src\"}")
+        } else {
+            XCTFail("Expected toolCall content")
+        }
+    }
+
+    func test_toDomain_toolCallContent_unknownStatus_defaultsToPending() {
+        // Arrange
+        let contentDTO = MessageContentDTO.toolCall(
+            ToolCallContentDTO(id: "tc-2", name: "tool", status: "unknown_status", input: nil)
+        )
+
+        // Act
+        let content = MessageMapper.toDomain(contentDTO)
+
+        // Assert
+        if case .toolCall(let toolCall) = content {
+            XCTAssertEqual(toolCall.status, .pending)
+        } else {
+            XCTFail("Expected toolCall content")
+        }
+    }
+
+    func test_toDomain_toolResultContent_mapsCorrectly() {
+        // Arrange
+        let contentDTO = MessageContentDTO.toolResult(
+            ToolResultContentDTO(id: "tr-1", toolCallId: "tc-1", content: "File contents here", isError: false)
+        )
+
+        // Act
+        let content = MessageMapper.toDomain(contentDTO)
+
+        // Assert
+        if case .toolResult(let toolResult) = content {
+            XCTAssertEqual(toolResult.id, "tr-1")
+            XCTAssertEqual(toolResult.toolCallId, "tc-1")
+            XCTAssertEqual(toolResult.content, "File contents here")
+            XCTAssertFalse(toolResult.isError)
+        } else {
+            XCTFail("Expected toolResult content")
+        }
+    }
+
+    func test_toDomain_toolResultContent_withError_mapsIsErrorTrue() {
+        // Arrange
+        let contentDTO = MessageContentDTO.toolResult(
+            ToolResultContentDTO(id: "tr-2", toolCallId: "tc-2", content: "Error occurred", isError: true)
+        )
+
+        // Act
+        let content = MessageMapper.toDomain(contentDTO)
+
+        // Assert
+        if case .toolResult(let toolResult) = content {
+            XCTAssertTrue(toolResult.isError)
+        } else {
+            XCTFail("Expected toolResult content")
+        }
+    }
+
+    func test_toDomain_imageContent_mapsCorrectly() {
+        // Arrange
+        let contentDTO = MessageContentDTO.image(
+            ImageContentDTO(id: "img-1", url: "https://example.com/image.png", altText: "A screenshot")
+        )
+
+        // Act
+        let content = MessageMapper.toDomain(contentDTO)
+
+        // Assert
+        if case .image(let imageContent) = content {
+            XCTAssertEqual(imageContent.id, "img-1")
+            XCTAssertEqual(imageContent.url, "https://example.com/image.png")
+            XCTAssertEqual(imageContent.altText, "A screenshot")
+        } else {
+            XCTFail("Expected image content")
+        }
+    }
+
+    func test_toDomain_imageContent_withNilAltText_mapsCorrectly() {
+        // Arrange
+        let contentDTO = MessageContentDTO.image(
+            ImageContentDTO(id: "img-2", url: "https://example.com/image.png", altText: nil)
+        )
+
+        // Act
+        let content = MessageMapper.toDomain(contentDTO)
+
+        // Assert
+        if case .image(let imageContent) = content {
+            XCTAssertNil(imageContent.altText)
+        } else {
+            XCTFail("Expected image content")
+        }
+    }
+
+    // MARK: - Domain -> DTO
+
+    func test_toDTO_message_mapsAllFields() {
+        // Arrange
+        let now = Date()
+        let message = Message(
+            id: "msg-1",
+            role: .user,
+            timestamp: now,
+            content: [.text(TextContent(text: "Hello"))],
+            status: .completed,
+            sessionId: "s1",
+            isAudioMessage: true
+        )
+
+        // Act
+        let dto = MessageMapper.toDTO(message)
+
+        // Assert
+        XCTAssertEqual(dto.id, "msg-1")
+        XCTAssertEqual(dto.role, "user")
+        XCTAssertEqual(dto.status, "completed")
+        XCTAssertEqual(dto.sessionId, "s1")
+        XCTAssertEqual(dto.isAudioMessage, true)
+        XCTAssertEqual(dto.content.count, 1)
+
+        let formatter = ISO8601DateFormatter()
+        let expectedTimestamp = formatter.string(from: now)
+        XCTAssertEqual(dto.timestamp, expectedTimestamp)
+    }
+
+    func test_toDTO_textContent_mapsCorrectly() {
+        // Arrange
+        let content = MessageContent.text(TextContent(text: "Hello"))
+
+        // Act
+        let dto = MessageMapper.toDTO(content)
+
+        // Assert
+        if case .text(let textDTO) = dto {
+            XCTAssertEqual(textDTO.text, "Hello")
+            XCTAssertEqual(textDTO.type, "text")
+        } else {
+            XCTFail("Expected text DTO")
+        }
+    }
+
+    func test_toDTO_codeBlockContent_mapsCorrectly() {
+        // Arrange
+        let content = MessageContent.codeBlock(
+            CodeBlockContent(id: "cb-1", language: "python", code: "print('hi')")
+        )
+
+        // Act
+        let dto = MessageMapper.toDTO(content)
+
+        // Assert
+        if case .codeBlock(let codeDTO) = dto {
+            XCTAssertEqual(codeDTO.id, "cb-1")
+            XCTAssertEqual(codeDTO.language, "python")
+            XCTAssertEqual(codeDTO.code, "print('hi')")
+            XCTAssertEqual(codeDTO.type, "codeBlock")
+        } else {
+            XCTFail("Expected codeBlock DTO")
+        }
+    }
+
+    func test_toDTO_toolCallContent_mapsCorrectly() {
+        // Arrange
+        let content = MessageContent.toolCall(
+            ToolCallContent(id: "tc-1", name: "readFile", status: .completed, input: "{}")
+        )
+
+        // Act
+        let dto = MessageMapper.toDTO(content)
+
+        // Assert
+        if case .toolCall(let toolDTO) = dto {
+            XCTAssertEqual(toolDTO.id, "tc-1")
+            XCTAssertEqual(toolDTO.name, "readFile")
+            XCTAssertEqual(toolDTO.status, "completed")
+            XCTAssertEqual(toolDTO.input, "{}")
+            XCTAssertEqual(toolDTO.type, "toolCall")
+        } else {
+            XCTFail("Expected toolCall DTO")
+        }
+    }
+
+    func test_toDTO_toolResultContent_mapsCorrectly() {
+        // Arrange
+        let content = MessageContent.toolResult(
+            ToolResultContent(id: "tr-1", toolCallId: "tc-1", content: "Result", isError: false)
+        )
+
+        // Act
+        let dto = MessageMapper.toDTO(content)
+
+        // Assert
+        if case .toolResult(let resultDTO) = dto {
+            XCTAssertEqual(resultDTO.id, "tr-1")
+            XCTAssertEqual(resultDTO.toolCallId, "tc-1")
+            XCTAssertEqual(resultDTO.content, "Result")
+            XCTAssertFalse(resultDTO.isError)
+            XCTAssertEqual(resultDTO.type, "toolResult")
+        } else {
+            XCTFail("Expected toolResult DTO")
+        }
+    }
+
+    func test_toDTO_imageContent_mapsCorrectly() {
+        // Arrange
+        let content = MessageContent.image(
+            ImageContent(id: "img-1", url: "https://example.com/img.png", altText: "Alt")
+        )
+
+        // Act
+        let dto = MessageMapper.toDTO(content)
+
+        // Assert
+        if case .image(let imgDTO) = dto {
+            XCTAssertEqual(imgDTO.id, "img-1")
+            XCTAssertEqual(imgDTO.url, "https://example.com/img.png")
+            XCTAssertEqual(imgDTO.altText, "Alt")
+            XCTAssertEqual(imgDTO.type, "image")
+        } else {
+            XCTFail("Expected image DTO")
+        }
+    }
+
+    // MARK: - Handle Nil/Optional Fields
+
+    func test_toDTO_message_withNilSessionId_mapsToNil() {
+        // Arrange
+        let message = Message(
+            id: "msg-1",
+            role: .assistant,
+            timestamp: Date(),
+            content: [],
+            status: .completed,
+            sessionId: nil
+        )
+
+        // Act
+        let dto = MessageMapper.toDTO(message)
+
+        // Assert
+        XCTAssertNil(dto.sessionId)
+    }
+
+    func test_toDomain_multipleContentBlocks_mapsAll() {
+        // Arrange
+        let dto = MessageDTO(
+            id: "msg-multi",
+            role: "assistant",
+            timestamp: ISO8601DateFormatter().string(from: Date()),
+            content: [
+                .text(TextContentDTO(text: "Here is the code:")),
+                .codeBlock(CodeBlockContentDTO(id: "cb-1", language: "swift", code: "let x = 1")),
+                .toolCall(ToolCallContentDTO(id: "tc-1", name: "run", status: "completed", input: nil)),
+                .toolResult(ToolResultContentDTO(id: "tr-1", toolCallId: "tc-1", content: "Success", isError: false)),
+                .image(ImageContentDTO(id: "img-1", url: "https://example.com/img.png", altText: nil))
+            ],
+            status: "completed",
+            sessionId: "s1",
+            isAudioMessage: false
+        )
+
+        // Act
+        let message = MessageMapper.toDomain(dto)
+
+        // Assert
+        XCTAssertEqual(message.content.count, 5)
+    }
+
+    // MARK: - Round-trip DTO -> Domain -> DTO
+
+    func test_roundTrip_messageDTO_toDomainAndBack_preservesFields() {
+        // Arrange
+        let now = Date()
+        let formatter = ISO8601DateFormatter()
+        let timestampStr = formatter.string(from: now)
+
+        let originalDTO = MessageDTO(
+            id: "msg-rt",
+            role: "user",
+            timestamp: timestampStr,
+            content: [.text(TextContentDTO(text: "Round trip"))],
+            status: "sending",
+            sessionId: "s-rt",
+            isAudioMessage: true
+        )
+
+        // Act
+        let domain = MessageMapper.toDomain(originalDTO)
+        let backToDTO = MessageMapper.toDTO(domain)
+
+        // Assert
+        XCTAssertEqual(backToDTO.id, originalDTO.id)
+        XCTAssertEqual(backToDTO.role, originalDTO.role)
+        XCTAssertEqual(backToDTO.status, originalDTO.status)
+        XCTAssertEqual(backToDTO.sessionId, originalDTO.sessionId)
+        XCTAssertEqual(backToDTO.isAudioMessage, originalDTO.isAudioMessage)
+        XCTAssertEqual(backToDTO.content.count, originalDTO.content.count)
+    }
+
+    // MARK: - AnyCodable -> Domain (fromAnyCodable)
+
+    func test_fromAnyCodable_withValidDict_returnsMessage() {
+        // Arrange
+        let value = AnyCodable(dictionary: [
+            "id": AnyCodable(string: "msg-ac"),
+            "role": AnyCodable(string: "assistant"),
+            "content": AnyCodable(array: [
+                AnyCodable(dictionary: [
+                    "type": AnyCodable(string: "text"),
+                    "text": AnyCodable(string: "Hello from AnyCodable")
+                ])
+            ]),
+            "status": AnyCodable(string: "completed"),
+            "sessionId": AnyCodable(string: "s-ac")
+        ])
+
+        // Act
+        let message = MessageMapper.fromAnyCodable(value)
+
+        // Assert
         XCTAssertNotNil(message)
-        XCTAssertEqual(message?.id, "msg-n1")
+        XCTAssertEqual(message?.id, "msg-ac")
         XCTAssertEqual(message?.role, .assistant)
-        XCTAssertEqual(message?.status, .streaming)
-        XCTAssertEqual(message?.sessionId, "session-n1")
-    }
-
-    func testMapFromNotification_withNilParams_returnsNil() {
-        let notification = JSONRPCNotification(
-            jsonrpc: "2.0",
-            method: "chat.messageStream",
-            params: nil
-        )
-
-        let message = MessageMapper.mapFromNotification(notification)
-
-        XCTAssertNil(message)
-    }
-
-    func testMapFromNotification_withCompletedStatus_mapsStatusCorrectly() {
-        let notification = JSONRPCNotification(
-            jsonrpc: "2.0",
-            method: "chat.messageComplete",
-            params: AnyCodable(dictionary: [
-                "id": AnyCodable(string: "msg-c1"),
-                "role": AnyCodable(string: "assistant"),
-                "content": AnyCodable(string: "Done."),
-                "status": AnyCodable(string: "completed")
-            ])
-        )
-
-        let message = MessageMapper.mapFromNotification(notification)
-
         XCTAssertEqual(message?.status, .completed)
+        XCTAssertEqual(message?.sessionId, "s-ac")
+        XCTAssertEqual(message?.content.count, 1)
     }
 
-    func testMapFromNotification_withFailedStatus_mapsStatusCorrectly() {
-        let notification = JSONRPCNotification(
-            jsonrpc: "2.0",
-            method: "chat.messageStream",
-            params: AnyCodable(dictionary: [
-                "id": AnyCodable(string: "msg-f1"),
-                "role": AnyCodable(string: "assistant"),
-                "content": AnyCodable(string: "Error occurred"),
-                "status": AnyCodable(string: "failed")
-            ])
-        )
+    func test_fromAnyCodable_withMissingId_returnsNil() {
+        // Arrange
+        let value = AnyCodable(dictionary: [
+            "role": AnyCodable(string: "user"),
+            "content": AnyCodable(string: "No id")
+        ])
 
-        let message = MessageMapper.mapFromNotification(notification)
+        // Act
+        let message = MessageMapper.fromAnyCodable(value)
 
-        XCTAssertEqual(message?.status, .failed)
-    }
-
-    // MARK: - Department Mapping
-
-    func testDepartmentMapper_mapsFromResponse() {
-        let response = JSONRPCResponse(
-            jsonrpc: "2.0",
-            result: AnyCodable(array: [
-                AnyCodable(dictionary: [
-                    "id": AnyCodable(string: "dept-1"),
-                    "name": AnyCodable(string: "Engineering"),
-                    "agents": AnyCodable(array: [
-                        AnyCodable(dictionary: [
-                            "id": AnyCodable(string: "agent-1"),
-                            "name": AnyCodable(string: "Code Agent"),
-                            "description": AnyCodable(string: "Writes code"),
-                            "departmentId": AnyCodable(string: "dept-1"),
-                            "isSystem": AnyCodable(bool: false)
-                        ])
-                    ])
-                ])
-            ]),
-            error: nil,
-            id: "req_d1"
-        )
-
-        let departments = DepartmentMapper.mapFromResponse(response)
-
-        XCTAssertEqual(departments.count, 1)
-        XCTAssertEqual(departments[0].id, "dept-1")
-        XCTAssertEqual(departments[0].name, "Engineering")
-        XCTAssertEqual(departments[0].agents.count, 1)
-        XCTAssertEqual(departments[0].agents[0].id, "agent-1")
-        XCTAssertEqual(departments[0].agents[0].name, "Code Agent")
-    }
-
-    // MARK: - Session Mapping
-
-    func testSessionMapper_mapsFromResponse() {
-        let response = JSONRPCResponse(
-            jsonrpc: "2.0",
-            result: AnyCodable(dictionary: [
-                "id": AnyCodable(string: "sess-1"),
-                "agentId": AnyCodable(string: "agent-1"),
-                "agentName": AnyCodable(string: "Code Agent"),
-                "messageCount": AnyCodable(int: 5),
-                "isArchived": AnyCodable(bool: false)
-            ]),
-            error: nil,
-            id: "req_s1"
-        )
-
-        let session = SessionMapper.mapFromResponse(response)
-
-        XCTAssertEqual(session.id, "sess-1")
-        XCTAssertEqual(session.agentId, "agent-1")
-        XCTAssertEqual(session.agentName, "Code Agent")
-        XCTAssertEqual(session.messageCount, 5)
-        XCTAssertFalse(session.isArchived)
-    }
-
-    func testSessionMapper_mapsArrayFromResponse() {
-        let response = JSONRPCResponse(
-            jsonrpc: "2.0",
-            result: AnyCodable(array: [
-                AnyCodable(dictionary: [
-                    "id": AnyCodable(string: "s1"),
-                    "agentId": AnyCodable(string: "a1"),
-                    "agentName": AnyCodable(string: "Agent A"),
-                    "messageCount": AnyCodable(int: 3),
-                    "isArchived": AnyCodable(bool: false)
-                ]),
-                AnyCodable(dictionary: [
-                    "id": AnyCodable(string: "s2"),
-                    "agentId": AnyCodable(string: "a2"),
-                    "agentName": AnyCodable(string: "Agent B"),
-                    "messageCount": AnyCodable(int: 7),
-                    "isArchived": AnyCodable(bool: true)
-                ])
-            ]),
-            error: nil,
-            id: "req_sa"
-        )
-
-        let sessions = SessionMapper.mapArrayFromResponse(response)
-
-        XCTAssertEqual(sessions.count, 2)
-        XCTAssertEqual(sessions[0].id, "s1")
-        XCTAssertEqual(sessions[1].id, "s2")
-        XCTAssertTrue(sessions[1].isArchived)
-    }
-
-    // MARK: - ProjectFile Mapping
-
-    func testProjectFileMapper_mapsFromResponse() {
-        let response = JSONRPCResponse(
-            jsonrpc: "2.0",
-            result: AnyCodable(dictionary: [
-                "id": AnyCodable(string: "root"),
-                "name": AnyCodable(string: "project"),
-                "path": AnyCodable(string: "/"),
-                "isDirectory": AnyCodable(bool: true),
-                "children": AnyCodable(array: [
-                    AnyCodable(dictionary: [
-                        "id": AnyCodable(string: "f1"),
-                        "name": AnyCodable(string: "main.swift"),
-                        "path": AnyCodable(string: "/main.swift"),
-                        "isDirectory": AnyCodable(bool: false),
-                        "size": AnyCodable(int: 1024)
-                    ])
-                ])
-            ]),
-            error: nil,
-            id: "req_pf"
-        )
-
-        let file = ProjectFileMapper.mapFromResponse(response)
-
-        XCTAssertEqual(file.name, "project")
-        XCTAssertEqual(file.path, "/")
-        XCTAssertTrue(file.isDirectory)
-        XCTAssertEqual(file.children?.count, 1)
-        XCTAssertEqual(file.children?[0].name, "main.swift")
-        XCTAssertEqual(file.children?[0].size, 1024)
-        XCTAssertFalse(file.children?[0].isDirectory ?? true)
+        // Assert
+        XCTAssertNil(message)
     }
 }
