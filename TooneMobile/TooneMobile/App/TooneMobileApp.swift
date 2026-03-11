@@ -4,6 +4,7 @@ import SwiftData
 @main
 struct TooneMobileApp: App {
     private let container: AppContainer
+    @State private var showSplash = true
 
     init() {
         self.container = AppContainer()
@@ -11,11 +12,23 @@ struct TooneMobileApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
-                .environment(container.appRouter)
-                .environment(container.connectionViewModel)
-                .modelContainer(container.modelContainer)
-                .preferredColorScheme(.dark)
+            ZStack {
+                if showSplash {
+                    SplashView {
+                        withAnimation(.easeInOut(duration: 0.4)) {
+                            showSplash = false
+                        }
+                    }
+                    .transition(.opacity)
+                } else {
+                    RootView()
+                        .environment(container.appRouter)
+                        .environment(container.connectionViewModel)
+                        .transition(.opacity)
+                }
+            }
+            .modelContainer(container.modelContainer)
+            .preferredColorScheme(.dark)
         }
     }
 }
