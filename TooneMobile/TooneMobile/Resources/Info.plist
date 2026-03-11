@@ -37,6 +37,12 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>UIAppFonts</key>
+	<array>
+		<string>10Pixel-Regular.ttf</string>
+		<string>10Pixel-Bold.ttf</string>
+		<string>10Pixel-Thin.ttf</string>
+	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Toone Mobile needs local network access to discover and connect to Toone Desktop on your Mac.</string>
 	<key>NSBonjourServices</key>

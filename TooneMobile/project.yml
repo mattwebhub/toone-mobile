@@ -32,6 +32,8 @@ targets:
       base:
         INFOPLIST_FILE: TooneMobile/Resources/Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: com.toone.mobile
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
 
   TooneMobileTests:
     type: bundle.unit-test
