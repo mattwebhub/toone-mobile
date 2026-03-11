@@ -11,6 +11,7 @@ final class RemoteSessionRepository: SessionRepository, @unchecked Sendable {
 
     private let tunnelClient: TunnelClient
     private let logger: AppLogger
+    private let analytics: AnalyticsService?
     private let modelContainer: ModelContainer?
     private let desktopHost: String
 
@@ -20,10 +21,12 @@ final class RemoteSessionRepository: SessionRepository, @unchecked Sendable {
         tunnelClient: TunnelClient,
         logger: AppLogger,
         modelContainer: ModelContainer? = nil,
-        desktopHost: String = ""
+        desktopHost: String = "",
+        analytics: AnalyticsService? = nil
     ) {
         self.tunnelClient = tunnelClient
         self.logger = logger
+        self.analytics = analytics
         self.modelContainer = modelContainer
         self.desktopHost = desktopHost
     }
@@ -50,7 +53,11 @@ final class RemoteSessionRepository: SessionRepository, @unchecked Sendable {
         } catch {
             // Fallback to cached sessions on failure.
             logger.warning("Failed to fetch sessions, using cache: \(error)", category: .network)
-            return await getCachedSessions()
+            let cached = await getCachedSessions()
+            if !cached.isEmpty {
+                analytics?.trackCacheHit(type: "session", count: cached.count)
+            }
+            return cached
         }
     }
 
@@ -123,6 +130,7 @@ final class RemoteSessionRepository: SessionRepository, @unchecked Sendable {
         )
         context.insert(cached)
         try? context.save()
+        analytics?.trackCacheWrite(type: "session")
     }
 
     @MainActor
