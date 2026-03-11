@@ -13,6 +13,14 @@ struct AppConfiguration: Sendable {
     let appVersion: String
     let buildNumber: String
 
+    // Security
+    let tlsEnabled: Bool = true
+    let maxPayloadSize: Int = 10_485_760  // 10 MB
+    let maxPendingRequests: Int = 100
+    let clipboardAutoClearSeconds: TimeInterval = 60
+    let maxMessageContentLength: Int = 100_000
+    let maxJSONNestingDepth: Int = 50
+
     init() {
         appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0"
         buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"

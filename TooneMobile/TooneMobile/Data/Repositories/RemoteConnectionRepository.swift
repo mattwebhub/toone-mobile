@@ -13,6 +13,10 @@ final class RemoteConnectionRepository: ConnectionRepository, @unchecked Sendabl
     private let tunnelClient: TunnelClient
     private let logger: AppLogger
 
+    /// The host address of the currently connected desktop.
+    /// Set after a successful connection; empty when disconnected.
+    private(set) var connectedHost: String = ""
+
     private let statusContinuation: AsyncStream<ConnectionStatus>.Continuation
     private let _statusStream: AsyncStream<ConnectionStatus>
 
@@ -45,6 +49,7 @@ final class RemoteConnectionRepository: ConnectionRepository, @unchecked Sendabl
         do {
             statusContinuation.yield(.authenticating)
             let info = try await connectionManager.connect(host: host, port: port, token: token)
+            connectedHost = host
             statusContinuation.yield(.syncing)
             statusContinuation.yield(.connected(info))
             logger.info("Connected to \(info.hostname) v\(info.version)", category: .network)
@@ -72,6 +77,7 @@ final class RemoteConnectionRepository: ConnectionRepository, @unchecked Sendabl
     func disconnect() async {
         logger.info("Disconnecting from desktop", category: .network)
         await connectionManager.disconnect()
+        connectedHost = ""
         statusContinuation.yield(.disconnected)
     }
 

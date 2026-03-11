@@ -8,6 +8,7 @@ final class AgentListViewModel {
     var searchQuery: String = ""
     var isLoading: Bool = false
     var selectedAgent: Agent?
+    var connectionRole: ConnectionRole = .viewer
     var errorMessage: String?
 
     private let listAgentsUseCase: ListAgentsUseCase
@@ -49,6 +50,10 @@ final class AgentListViewModel {
         !departments.isEmpty
     }
 
+    var canSwitchAgents: Bool {
+        connectionRole.canSwitchAgents
+    }
+
     // MARK: - Actions
 
     func loadAgents() async {
@@ -65,6 +70,7 @@ final class AgentListViewModel {
     }
 
     func switchToAgent(_ agent: Agent) async {
+        guard connectionRole.canSwitchAgents else { return }
         do {
             let session = try await switchAgentUseCase.execute(agentId: agent.id)
             var updatedAgent = agent

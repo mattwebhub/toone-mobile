@@ -12,6 +12,7 @@ final class SettingsViewModel {
     var appVersion: String = ""
     var buildNumber: String = ""
     var connectionStatus: ConnectionStatus = .disconnected
+    var connectionRole: ConnectionRole = .viewer
     var isConnecting: Bool = false
     var errorMessage: String?
 
@@ -84,6 +85,7 @@ final class SettingsViewModel {
             case .connected(let info):
                 isConnected = true
                 desktopInfo = info
+                connectionRole = info.role
                 isConnecting = false
                 errorMessage = nil
             case .failed(let error):

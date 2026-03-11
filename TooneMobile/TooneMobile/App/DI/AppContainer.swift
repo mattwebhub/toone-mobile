@@ -13,6 +13,11 @@ final class AppContainer {
     let analytics: AnalyticsService
     let configuration: AppConfiguration
 
+    // MARK: - Security
+
+    let securityManager: SecurityManager
+    let tlsDelegate: TLSDelegate
+
     // MARK: - Network
 
     let tunnelClient: TunnelClient
@@ -54,11 +59,16 @@ final class AppContainer {
             fatalError("Failed to create ModelContainer: \(error.localizedDescription)")
         }
 
+        // -- Security --
+        securityManager = SecurityManager()
+        tlsDelegate = TLSDelegate(expectedFingerprint: nil) // Set during pairing
+
         // -- Network --
-        tunnelClient = TunnelClient()
-        connectionManager = ConnectionManager(tunnelClient: tunnelClient)
+        tunnelClient = TunnelClient(tlsDelegate: tlsDelegate)
+        connectionManager = ConnectionManager(tunnelClient: tunnelClient, securityManager: securityManager)
 
         // -- Repositories --
+        // TODO: desktopHost is set after connection via updateDesktopHost()
         connectionRepository = RemoteConnectionRepository(
             connectionManager: connectionManager,
             tunnelClient: tunnelClient,

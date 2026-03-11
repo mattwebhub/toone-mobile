@@ -17,6 +17,7 @@ final class ChatViewModel {
     var isProcessing: Bool = false
     var currentAgent: Agent?
     var connectionStatus: ConnectionStatus = .disconnected
+    var connectionRole: ConnectionRole = .viewer
     var pendingQuestion: AIQuestion?
     var scrollToBottomTrigger: UUID = UUID()
 
@@ -37,8 +38,12 @@ final class ChatViewModel {
         return false
     }
 
+    var canSendMessages: Bool {
+        connectionRole.canSendMessages
+    }
+
     var canSend: Bool {
-        isConnected && !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isProcessing
+        isConnected && canSendMessages && !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isProcessing
     }
 
     var agentDisplayName: String {
@@ -68,6 +73,7 @@ final class ChatViewModel {
     // MARK: - Actions
 
     func sendMessage() async {
+        guard connectionRole.canSendMessages else { return }
         let trimmedText = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedText.isEmpty, isConnected else { return }
 
@@ -151,6 +157,9 @@ final class ChatViewModel {
     func observeConnectionStatus() async {
         for await status in connectionRepository.statusStream {
             connectionStatus = status
+            if case .connected(let info) = status {
+                connectionRole = info.role
+            }
         }
     }
 
