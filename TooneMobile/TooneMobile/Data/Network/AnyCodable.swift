@@ -129,14 +129,18 @@ struct AnyCodable: Codable, Sendable, Equatable {
     // MARK: - Helpers
 
     /// Recursively sanitize a value to ensure it uses only JSON-safe types.
-    private static func sanitize(_ value: Any) -> Any {
+    /// Includes depth and collection size limits to prevent stack overflow from malicious payloads.
+    private static func sanitize(_ value: Any, depth: Int = 0) -> Any {
+        guard depth < 50 else { return "<truncated>" }
+
         switch value {
         case let codable as AnyCodable:
             return codable.value
         case let array as [Any]:
-            return array.map { sanitize($0) }
+            return array.prefix(1000).map { sanitize($0, depth: depth + 1) }
         case let dict as [String: Any]:
-            return dict.mapValues { sanitize($0) }
+            let limited = Dictionary(uniqueKeysWithValues: dict.prefix(500).map { ($0.key, sanitize($0.value, depth: depth + 1)) })
+            return limited
         default:
             return value
         }

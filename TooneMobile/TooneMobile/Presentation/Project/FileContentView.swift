@@ -62,6 +62,15 @@ struct FileContentView: View {
 
                         Button {
                             UIPasteboard.general.string = content
+
+                            // Auto-clear clipboard after 60 seconds for security
+                            let copiedContent = content
+                            Task { @MainActor in
+                                try? await Task.sleep(for: .seconds(60))
+                                if UIPasteboard.general.string == copiedContent {
+                                    UIPasteboard.general.string = ""
+                                }
+                            }
                         } label: {
                             Label("Copy All", systemImage: "doc.on.doc")
                         }

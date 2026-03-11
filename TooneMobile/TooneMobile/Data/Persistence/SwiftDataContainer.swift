@@ -12,8 +12,20 @@ enum PersistenceConfiguration {
             CachedMessage.self,
             CachedSession.self
         ])
+
+        // Use default store URL with file protection
         let config = ModelConfiguration(isStoredInMemoryOnly: false)
-        return try ModelContainer(for: schema, configurations: [config])
+        let container = try ModelContainer(for: schema, configurations: [config])
+
+        // Apply file protection to the store
+        if let storeURL = container.configurations.first?.url {
+            try? FileManager.default.setAttributes(
+                [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+                ofItemAtPath: storeURL.path()
+            )
+        }
+
+        return container
     }
 
     /// Create an in-memory ModelContainer for previews and testing.

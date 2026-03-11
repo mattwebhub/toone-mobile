@@ -71,6 +71,15 @@ struct MessageBubble: View {
             }.joined(separator: "\n")
 
             UIPasteboard.general.string = text
+
+            // Auto-clear clipboard after 60 seconds for security
+            let copiedText = text
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(60))
+                if UIPasteboard.general.string == copiedText {
+                    UIPasteboard.general.string = ""
+                }
+            }
         } label: {
             Label("Copy", systemImage: "doc.on.doc")
         }

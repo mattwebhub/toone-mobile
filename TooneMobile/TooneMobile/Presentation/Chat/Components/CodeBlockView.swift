@@ -71,6 +71,15 @@ struct CodeBlockView: View {
         UIPasteboard.general.string = content.code
         isCopied = true
 
+        // Auto-clear clipboard after 60 seconds for security
+        let copiedCode = content.code
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(60))
+            if UIPasteboard.general.string == copiedCode {
+                UIPasteboard.general.string = ""
+            }
+        }
+
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(2))
             isCopied = false

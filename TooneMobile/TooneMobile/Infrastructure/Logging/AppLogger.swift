@@ -23,11 +23,11 @@ final class AppLogger: Sendable {
     // MARK: - Public API
 
     func info(_ message: String, category: LogCategory = .general) {
-        logger(for: category).info("\(message, privacy: .public)")
+        logger(for: category).info("\(message, privacy: .private)")
     }
 
     func debug(_ message: String, category: LogCategory = .general) {
-        logger(for: category).debug("\(message, privacy: .public)")
+        logger(for: category).debug("\(message, privacy: .private)")
     }
 
     func warning(_ message: String, category: LogCategory = .general) {

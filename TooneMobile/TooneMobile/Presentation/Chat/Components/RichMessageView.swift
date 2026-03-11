@@ -38,7 +38,7 @@ struct RichMessageView: View {
     // MARK: - Text Content
 
     private func textView(_ content: TextContent) -> some View {
-        Text(LocalizedStringKey(content.text))
+        Text(content.text)
             .font(AppTypography.Chat.message)
             .foregroundStyle(OceanDepth.textPrimary)
             .textSelection(.enabled)
